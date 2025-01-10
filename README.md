@@ -17,9 +17,8 @@ DomainHunter is a specialized PowerShell tool designed to identify domain comput
 ## Getting Started
 
 ### Prerequisites
-- Windows PowerShell 5.1+
+- Windows PowerShell 
 - Domain user access
-- RSAT Tools installed
 
 ### Basic Usage
 ```powershell
