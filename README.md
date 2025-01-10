@@ -9,6 +9,9 @@ DomainHunter is a specialized PowerShell tool designed to identify domain comput
 
 ## Key Features
 - Domain-wide computer enumeration
+- Works in PowerShell Constrained Language Mode
+- Runs with standard domain user permissions
+- No local admin rights required
 - Pre-Windows 2000 password pattern testing
 - Age-based password filtering (30+ days)
 - Real-time discovery alerts
@@ -17,8 +20,10 @@ DomainHunter is a specialized PowerShell tool designed to identify domain comput
 ## Getting Started
 
 ### Prerequisites
-- Windows PowerShell 
-- Domain user access
+- Domain User account
+- Basic PowerShell execution rights
+- Network connectivity to Domain Controllers
+
 
 ### Basic Usage
 ```powershell
@@ -46,7 +51,7 @@ DomainHunter performs the following operations:
 
 Successful discoveries are logged as:
 
-`[DISCOVERED] Computer: COMPUTER001 Password: computer001 (Last password set: 2024-01-20)`
+`[TESTING] Computer: COMPUTERNAME$ Password: password SUCCESS/FAILED`
 
 ## Security Notes
 - Run in authorized test environments only
